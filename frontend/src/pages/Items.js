@@ -1,32 +1,99 @@
-import React, { useEffect } from 'react';
-import { useData } from '../state/DataContext';
-import { Link } from 'react-router-dom';
+import React, { useEffect, useState } from "react";
+import { useData } from "../state/DataContext";
+import { Link } from "react-router-dom";
+import { List } from "react-window";
+import "./items.css"; // We'll add some styles here
 
 function Items() {
-  const { items, fetchItems } = useData();
+  const { items, fetchItems, setItems } = useData();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     let active = true;
 
-    // Intentional bug: setState called after component unmount if request is slow
-    fetchItems().catch(console.error);
+    const loadItems = async () => {
+      if (!active) return;
 
-    // Clean‑up to avoid memory leak (candidate should implement)
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await fetchItems({ limit: 10, page: 1 });
+
+        if (!active) return;
+
+        // Since fetchItems already sets the items in DataContext, we don't need to set them again
+        if (!response || !response.items) {
+          throw new Error("Invalid response from server");
+        }
+      } catch (err) {
+        if (!active) return;
+        console.error("Failed to fetch items:", err);
+        setError(err.message || "Failed to load items");
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadItems();
+
     return () => {
       active = false;
     };
-  }, [fetchItems]);
+  }, [fetchItems, setItems]);
 
-  if (!items.length) return <p>Loading...</p>;
+  if (loading) {
+    // Show skeleton placeholders while loading
+    return (
+      <ul aria-busy="true" className="items-list">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <li key={i} className="skeleton-item">
+            <div className="skeleton-title" />
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  if (error) {
+    return <div style={{ padding: "20px", color: "red" }}>Error: {error}</div>;
+  }
+
+  if (!loading && (!items || !items.length)) {
+    return <div style={{ padding: "20px" }}>No items found.</div>;
+  }
+
+  // Virtualized list item renderer
+  const Row = ({ index, style }) => {
+    const item = items[index];
+    return (
+      <div style={style} className="item-row">
+        <Link to={"/items/" + item.id}>{item.name}</Link>
+      </div>
+    );
+  };
 
   return (
-    <ul>
-      {items.map(item => (
-        <li key={item.id}>
-          <Link to={'/items/' + item.id}>{item.name}</Link>
-        </li>
-      ))}
-    </ul>
+    <div
+      style={{
+        width: "100%",
+        maxWidth: "800px",
+        margin: "0 auto",
+        padding: "20px",
+      }}
+    >
+      <List
+        height={400}
+        itemCount={items.length}
+        itemSize={50}
+        width="100%"
+        style={{ border: "1px solid #eee", borderRadius: "4px" }}
+      >
+        {Row}
+      </List>
+    </div>
   );
 }
 
